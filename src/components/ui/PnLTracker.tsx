@@ -10,20 +10,34 @@ function calculateAvgCostBasis(
   trades: Trade[],
   stockId: string,
 ): number {
-  let cost = 0;
-  let qty = 0;
+  // Track long and short cost bases separately
+  let longCost = 0;
+  let longQty = 0;
+  let shortCost = 0;
+  let shortQty = 0; // stored as positive number of shorted shares
+
   for (const t of trades) {
     if (t.stockId !== stockId) continue;
     if (t.type === 'buy') {
-      cost += t.price * t.quantity;
-      qty += t.quantity;
-    } else {
-      const avg = qty > 0 ? cost / qty : 0;
-      cost -= avg * Math.min(t.quantity, qty);
-      qty = Math.max(0, qty - t.quantity);
+      longCost += t.price * t.quantity;
+      longQty += t.quantity;
+    } else if (t.type === 'sell') {
+      const avg = longQty > 0 ? longCost / longQty : 0;
+      longCost -= avg * Math.min(t.quantity, longQty);
+      longQty = Math.max(0, longQty - t.quantity);
+    } else if (t.type === 'short') {
+      shortCost += t.price * t.quantity;
+      shortQty += t.quantity;
+    } else if (t.type === 'cover') {
+      const avg = shortQty > 0 ? shortCost / shortQty : 0;
+      shortCost -= avg * Math.min(t.quantity, shortQty);
+      shortQty = Math.max(0, shortQty - t.quantity);
     }
   }
-  return qty > 0 ? cost / qty : 0;
+
+  // Return whichever side has an open position
+  if (shortQty > 0) return shortQty > 0 ? shortCost / shortQty : 0;
+  return longQty > 0 ? longCost / longQty : 0;
 }
 
 function computePnL(player: Player, stocks: Stock[]) {
@@ -47,18 +61,29 @@ function computePnL(player: Player, stocks: Stock[]) {
       unrealized += (stock.price - avgCost) * qty;
     }
 
-    // Realized: sold shares
-    let runningQty = 0;
-    let runningCost = 0;
+    // Realized: closed positions (long sells and short covers)
+    let longRunQty = 0;
+    let longRunCost = 0;
+    let shortRunQty = 0;
+    let shortRunCost = 0;
     for (const t of trades) {
       if (t.type === 'buy') {
-        runningCost += t.price * t.quantity;
-        runningQty += t.quantity;
-      } else {
-        const avg = runningQty > 0 ? runningCost / runningQty : 0;
+        longRunCost += t.price * t.quantity;
+        longRunQty += t.quantity;
+      } else if (t.type === 'sell') {
+        const avg = longRunQty > 0 ? longRunCost / longRunQty : 0;
         realized += (t.price - avg) * t.quantity;
-        runningCost -= avg * Math.min(t.quantity, runningQty);
-        runningQty = Math.max(0, runningQty - t.quantity);
+        longRunCost -= avg * Math.min(t.quantity, longRunQty);
+        longRunQty = Math.max(0, longRunQty - t.quantity);
+      } else if (t.type === 'short') {
+        shortRunCost += t.price * t.quantity;
+        shortRunQty += t.quantity;
+      } else if (t.type === 'cover') {
+        const avg = shortRunQty > 0 ? shortRunCost / shortRunQty : 0;
+        // Short profit = shorted price - cover price
+        realized += (avg - t.price) * t.quantity;
+        shortRunCost -= avg * Math.min(t.quantity, shortRunQty);
+        shortRunQty = Math.max(0, shortRunQty - t.quantity);
       }
     }
   }

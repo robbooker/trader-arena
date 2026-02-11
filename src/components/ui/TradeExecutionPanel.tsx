@@ -13,35 +13,30 @@ interface TradeExecutionPanelProps {
 const ACTIONS: {
   key: TradeAction;
   label: string;
-  storeType: 'buy' | 'sell';
   idle: string;
   active: string;
 }[] = [
   {
     key: 'buy',
     label: 'BUY',
-    storeType: 'buy',
     idle: 'text-emerald-600 bg-slate-900 hover:bg-emerald-950',
     active: 'bg-emerald-500 text-black',
   },
   {
     key: 'sell',
     label: 'SELL',
-    storeType: 'sell',
     idle: 'text-rose-600 bg-slate-900 hover:bg-rose-950',
     active: 'bg-rose-500 text-black',
   },
   {
     key: 'short',
     label: 'SHORT',
-    storeType: 'sell',
     idle: 'text-orange-600 bg-slate-900 hover:bg-orange-950',
     active: 'bg-orange-500 text-black',
   },
   {
     key: 'cover',
     label: 'COVER',
-    storeType: 'buy',
     idle: 'text-cyan-600 bg-slate-900 hover:bg-cyan-950',
     active: 'bg-cyan-500 text-black',
   },
@@ -62,8 +57,9 @@ export function TradeExecutionPanel({
   const player = players.find((p) => p.id === playerId) ?? players[0];
 
   const currentAction = ACTIONS.find((a) => a.key === action)!;
+  const usesAskSide = action === 'buy' || action === 'cover';
   const fillPrice = stock
-    ? currentAction.storeType === 'buy'
+    ? usesAskSide
       ? stock.orderBook.asks[0]?.price ?? stock.price
       : stock.orderBook.bids[0]?.price ?? stock.price
     : 0;
@@ -76,7 +72,7 @@ export function TradeExecutionPanel({
     const result = executeTrade(
       player.id,
       stock.id,
-      currentAction.storeType,
+      action,
       quantity,
     );
     if (result) {
@@ -92,8 +88,16 @@ export function TradeExecutionPanel({
 
   const canExecute = (() => {
     if (!stock || !player || stock.halted) return false;
-    if (currentAction.storeType === 'buy') return player.cash >= estimatedTotal;
-    return currentPosition > 0;
+    switch (action) {
+      case 'buy':
+        return player.cash >= estimatedTotal;
+      case 'sell':
+        return currentPosition > 0 && currentPosition >= quantity;
+      case 'short':
+        return player.cash >= estimatedTotal;
+      case 'cover':
+        return currentPosition < 0 && Math.abs(currentPosition) >= quantity;
+    }
   })();
 
   return (
@@ -211,7 +215,7 @@ export function TradeExecutionPanel({
             onClick={handleExecute}
             disabled={!canExecute}
             className={`w-full py-2 rounded font-bold text-[12px] tracking-wider transition-colors ${
-              currentAction.storeType === 'buy'
+              action === 'buy' || action === 'cover'
                 ? 'bg-emerald-500 hover:bg-emerald-400 text-black disabled:bg-emerald-500/20 disabled:text-emerald-500/40'
                 : 'bg-rose-500 hover:bg-rose-400 text-black disabled:bg-rose-500/20 disabled:text-rose-500/40'
             }`}

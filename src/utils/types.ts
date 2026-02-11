@@ -60,7 +60,7 @@ export interface Trade {
   id: string;
   playerId: string;
   stockId: string;
-  type: 'buy' | 'sell';
+  type: 'buy' | 'sell' | 'short' | 'cover';
   quantity: number;
   price: number;
   timestamp: number;

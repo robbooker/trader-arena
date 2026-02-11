@@ -50,7 +50,7 @@ interface MarketActions {
   setTickSpeed: (ms: number) => void;
 
   // Trading
-  executeTrade: (playerId: string, stockId: string, type: 'buy' | 'sell', quantity: number) => Trade | null;
+  executeTrade: (playerId: string, stockId: string, type: 'buy' | 'sell' | 'short' | 'cover', quantity: number) => Trade | null;
   addPlayer: (name: string) => Player;
 
   // Manual tick (for testing / step-through)
@@ -243,18 +243,23 @@ export const useGameStore = create<GameStore>()(
       const stock = state.stocks.find((s) => s.id === stockId);
       if (!player || !stock || stock.halted) return null;
 
-      // Price from order book
-      const fillPrice = type === 'buy'
+      // Fill price: buy/cover use ask side, sell/short use bid side
+      const fillPrice = (type === 'buy' || type === 'cover')
         ? (stock.orderBook.asks[0]?.price ?? stock.price)
         : (stock.orderBook.bids[0]?.price ?? stock.price);
 
       const totalCost = fillPrice * quantity;
+      const held = player.portfolio[stockId] ?? 0;
 
+      // Validation per trade type
       if (type === 'buy') {
         if (player.cash < totalCost) return null;
-      } else {
-        const held = player.portfolio[stockId] ?? 0;
-        if (held < quantity) return null;
+      } else if (type === 'sell') {
+        if (held <= 0 || held < quantity) return null;
+      } else if (type === 'short') {
+        if (player.cash < totalCost) return null; // margin collateral
+      } else if (type === 'cover') {
+        if (held >= 0 || Math.abs(held) < quantity) return null;
       }
 
       const trade: Trade = {
@@ -270,14 +275,26 @@ export const useGameStore = create<GameStore>()(
       // Update player
       const updatedPlayers = state.players.map((p) => {
         if (p.id !== playerId) return p;
-        const newCash = type === 'buy'
-          ? p.cash - totalCost
-          : p.cash + totalCost;
+
+        let newCash = p.cash;
         const newPortfolio = { ...p.portfolio };
         const currentHolding = newPortfolio[stockId] ?? 0;
-        newPortfolio[stockId] = type === 'buy'
-          ? currentHolding + quantity
-          : currentHolding - quantity;
+
+        if (type === 'buy') {
+          newCash -= totalCost;
+          newPortfolio[stockId] = currentHolding + quantity;
+        } else if (type === 'sell') {
+          newCash += totalCost;
+          newPortfolio[stockId] = currentHolding - quantity;
+        } else if (type === 'short') {
+          // Sell shares you don't own: receive proceeds
+          newCash += totalCost;
+          newPortfolio[stockId] = currentHolding - quantity;
+        } else if (type === 'cover') {
+          // Buy back shorted shares: pay cost
+          newCash -= totalCost;
+          newPortfolio[stockId] = currentHolding + quantity;
+        }
 
         // Clean up zero positions
         if (newPortfolio[stockId] === 0) {

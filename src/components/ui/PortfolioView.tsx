@@ -7,20 +7,32 @@ interface PortfolioViewProps {
 }
 
 function getAvgCost(trades: Trade[], stockId: string): number {
-  let cost = 0;
-  let qty = 0;
+  let longCost = 0;
+  let longQty = 0;
+  let shortCost = 0;
+  let shortQty = 0;
+
   for (const t of trades) {
     if (t.stockId !== stockId) continue;
     if (t.type === 'buy') {
-      cost += t.price * t.quantity;
-      qty += t.quantity;
-    } else {
-      const avg = qty > 0 ? cost / qty : 0;
-      cost -= avg * Math.min(t.quantity, qty);
-      qty = Math.max(0, qty - t.quantity);
+      longCost += t.price * t.quantity;
+      longQty += t.quantity;
+    } else if (t.type === 'sell') {
+      const avg = longQty > 0 ? longCost / longQty : 0;
+      longCost -= avg * Math.min(t.quantity, longQty);
+      longQty = Math.max(0, longQty - t.quantity);
+    } else if (t.type === 'short') {
+      shortCost += t.price * t.quantity;
+      shortQty += t.quantity;
+    } else if (t.type === 'cover') {
+      const avg = shortQty > 0 ? shortCost / shortQty : 0;
+      shortCost -= avg * Math.min(t.quantity, shortQty);
+      shortQty = Math.max(0, shortQty - t.quantity);
     }
   }
-  return qty > 0 ? cost / qty : 0;
+
+  if (shortQty > 0) return shortCost / shortQty;
+  return longQty > 0 ? longCost / longQty : 0;
 }
 
 export function PortfolioView({ playerId }: PortfolioViewProps) {
