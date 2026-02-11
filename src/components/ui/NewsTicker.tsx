@@ -1,4 +1,5 @@
-import { useGameStore, selectRecentEvents } from '../../game-engine/useGameStore';
+import { useMemo } from 'react';
+import { useGameStore } from '../../game-engine/useGameStore';
 import type { MarketEventType } from '../../utils/types';
 
 const EVENT_STYLES: Record<
@@ -22,9 +23,11 @@ function formatEventType(type: MarketEventType): string {
 }
 
 export function NewsTicker() {
-  const events = useGameStore(selectRecentEvents(50));
-
-  const visibleEvents = [...events].reverse();
+  const allEvents = useGameStore((s) => s.events);
+  const visibleEvents = useMemo(
+    () => allEvents.slice(-50).reverse(),
+    [allEvents],
+  );
 
   if (visibleEvents.length === 0) {
     return (
